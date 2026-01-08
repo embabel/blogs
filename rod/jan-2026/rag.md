@@ -1,14 +1,20 @@
 # RAG Done Right: Why Pipeline RAG is the Past and Agentic RAG is the Future
 
-LLM general knowledge is both a blessing and a curse. It's out of date, as the training cutoff date may be months past; it's prone to hallucination; and it doesn't include data private to a person or organization.
+LLM general knowledge is both a blessing and a curse. Among other problems:
 
-Thus RAG (Retrieval-Augmented Generation) is an essential and established use of Gen AI.
+- It's prone to hallucination
+- It's always out of date, as the training cutoff date may be months past
+- Answers are unexplainable
+- It doesn't include data unavailable at training time
 
-Yet RAG is remarkably hard to get right. Despite its apparent simplicity, production RAG systems often disappoint. Users ask questions; the system returns irrelevant results; hallucinations persist. Teams add workaround upon workaround: HyDE, reranking, query expansion, chunk overlap tuning. The complexity spirals.
+Thus [RAG (Retrieval-Augmented Generation)](https://en.wikipedia.org/wiki/Retrieval-augmented_generation) is essential, and an established pattern. RAG retrieves external knowledge to provide better grounded, explainable, responses.
 
-I've seen this pattern before. In the early 2000s, J2EE promised enterprise Java but delivered complexity. Everyone invented workarounds. The answer wasn't more complexity—it was rethinking the fundamental model. Spring emerged from that insight.
+Yet RAG is remarkably hard to get right. The accuracy of production RAG systems often disappoints. The result is often piling on workarounds: [HyDE](https://docs.haystack.deepset.ai/docs/hypothetical-document-embeddings-hyde), reranking, query expansion, chunk overlap tuning. Complexity grows and results often continue to disappoint.
 
-Today's dominant RAG frameworks are making the same mistake J2EE made. They've built elaborate pipelines when what's needed is a fundamentally different approach: **letting the LLM reason about retrieval rather than blindly executing a predetermined flow**.
+
+> One problem: The dominant RAG frameworks are based on an obsolete approach, which dates back to the emergence of usable Gen AI and has been invalidated by the rise of tool calling. They rely on static pipelines when what's needed is a fundamentally different approach: **letting the LLM reason about retrieval rather than blindly executing a predetermined flow**. 
+> 
+> As we'll see, recent research is clear on this. The future is agentic.
 
 ## The Past: The Pipeline
 
@@ -16,7 +22,9 @@ Traditional RAG follows a rigid pipeline: query → retrieve → generate. It's 
 
 ### LangChain (Python): The Canonical Pipeline
 
-Here's how LangChain implements RAG using LCEL (LangChain Expression Language):
+As I've previously noted, LangChain owes its prominence not to its quality but to being the first mover. In this case, this has become a major liability, as its RAG approach is obsolete.
+
+Here's how LangChain implements RAG using [LCEL (LangChain Expression Language)](https://python.langchain.com/docs/concepts/lcel/):
 
 ```python
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
@@ -38,13 +46,19 @@ rag_chain = (
 )
 ```
 
-This is the pattern you'll find in tutorials, documentation, and production systems. Query comes in, retriever runs, results get stuffed into a prompt, LLM generates an answer. One shot. Done.
+This pattern appears across tutorials, documentation, and production systems. A query comes in, a retriever runs and the results are added to the prompt before the LLM generates an answer. Welcome to 2023.
 
-### LangChain4j: The Same Pipeline in Java
+### LangChain4j: Difference Language, Same Old Model
 
-LangChain4j brings the identical model to the JVM:
+[LangChain4j](https://docs.langchain4j.dev/tutorials/rag/) brings the same model to the JVM.
+The tutorial defines RAG explicitly in this limited, obsolete way:
+"Simply put, RAG is the way to find and inject relevant pieces of information from your data into the prompt before sending it to the LLM."
+
+Here's the code:
 
 ```java
+// From LangChain4j Easy RAG Example
+// https://github.com/langchain4j/langchain4j-examples/blob/main/rag-examples/src/main/java/_1_easy/Easy_RAG_Example.java
 public class Easy_RAG_Example {
 
     public static void main(String[] args) {
@@ -67,12 +81,11 @@ public class Easy_RAG_Example {
 }
 ```
 
-The `ContentRetriever` is configured once. When a query arrives, it retrieves. The LLM receives the results. That's it. The documentation explicitly describes this as a "two-step chain" that provides "reduced latency at the expense of flexibility."
-
-**At the expense of flexibility.** That phrase should give us pause.
+The `ContentRetriever` is configured once. When a query arrives, it retrieves. The LLM receives the results. That's it. The [documentation explicitly describes](https://docs.langchain.com/oss/python/langchain/rag) this as a "two-step chain" that provides "reduced latency at the expense of flexibility."
 
 ### What's Wrong With Pipelines?
 
+You can build more elaborate pipelines with both frameworks, but not truly fix the problem with this approach.
 The pipeline model has fundamental problems that no amount of tuning can fix:
 
 **1. Static Retrieval**
@@ -82,16 +95,14 @@ The system retrieves once and hopes for the best. If the initial query doesn't m
 If retrieved chunks don't actually answer the question, the pipeline has no mechanism to recognize this and try again. It blindly trusts whatever comes back from the vector store.
 
 **3. Context Blindness**
-The retriever doesn't know what the LLM learned from previous turns in a conversation. Each retrieval is isolated, unable to build on prior context.
+The retriever may not know what the LLM learned from previous turns in a conversation. Each retrieval is isolated, unable to build on prior context.
 
 **4. Workaround Proliferation**
 To compensate for these limitations, teams bolt on increasingly complex preprocessing: HyDE (Hypothetical Document Embeddings) to bridge the query-document vocabulary gap, rerankers to fix retrieval ordering, query expansion to catch more results, overlap tuning to hope chunk boundaries don't split relevant content.
 
-This is the J2EE pattern all over again. The fundamental model is flawed, so we add layers of complexity to work around its limitations.
-
-Anthropic's engineering team put it directly: *"Traditional approaches using Retrieval Augmented Generation (RAG) use static retrieval. That is, they fetch some set of chunks that are most similar to an input query and use these chunks to generate a response."*
-
-And then the key insight: *"You can't hardcode a fixed path for exploring complex topics, as the process is inherently dynamic and path-dependent."*
+[Anthropic's engineering team](https://www.anthropic.com/engineering/multi-agent-research-system) put it directly:
+> Traditional approaches using Retrieval Augmented Generation (RAG) use static retrieval. That is, they fetch some set of chunks that are most similar to an input query and use these chunks to generate a response.
+> [...] You can't hardcode a fixed path for exploring complex topics, as the process is inherently dynamic and path-dependent.
 
 ## The Future: Agentic RAG
 
@@ -99,11 +110,11 @@ What if we let the LLM control the retrieval process? What if instead of a rigid
 
 This is agentic RAG. The LLM becomes an active participant in retrieval rather than a passive consumer of whatever the pipeline produces.
 
-The research is clear. A January 2025 survey on arXiv found that *"traditional RAG systems are constrained by static workflows and lack the adaptability required for multistep reasoning and complex task management."* NVIDIA's engineering team writes that agentic RAG *"refines queries using reasoning, turning RAG into a sophisticated tool."* Academic studies show 80% improvement in retrieval quality and 90% higher user satisfaction compared to traditional systems.
+The research is clear. A [January 2025 survey on arXiv](https://arxiv.org/abs/2501.09136) found that *"traditional RAG systems are constrained by static workflows and lack the adaptability required for multistep reasoning and complex task management."* [NVIDIA's engineering team](https://developer.nvidia.com/blog/traditional-rag-vs-agentic-rag-why-ai-agents-need-dynamic-knowledge-to-get-smarter/) writes that agentic RAG *"refines queries using reasoning, turning RAG into a sophisticated tool."* [Academic studies](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5188363) show 80% improvement in retrieval quality and 90% higher user satisfaction compared to traditional systems.
 
-Anthropic's multi-agent research system, built on these principles, **outperformed single-agent approaches by 90.2%** on research evaluations.
+[Anthropic's multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system), built on these principles, **outperformed single-agent approaches by 90.2%** on research evaluations.
 
-This isn't incremental improvement. It's a paradigm shift.
+This is the future of RAG. Pipelines are obsolete.
 
 ## Embabel: Agentic RAG Done Right
 
@@ -135,47 +146,13 @@ This abstraction isn't specific to RAG. It's how Embabel exposes any capability 
 
 `ToolishRag` wraps any `SearchOperations` implementation and exposes its capabilities as individual tools the LLM can invoke:
 
-```kotlin
-data class ToolishRag @JvmOverloads constructor(
-    override val name: String,
-    override val description: String,
-    private val searchOperations: SearchOperations,
-    val goal: String = DEFAULT_GOAL,
-    val formatter: RetrievableResultsFormatter = SimpleRetrievableResultsFormatter,
-    val vectorSearchFor: List<Class<out Retrievable>> = listOf(Chunk::class.java),
-    val textSearchFor: List<Class<out Retrievable>> = listOf(Chunk::class.java),
-    val hints: List<PromptContributor> = listOf(),
-    val listener: ResultsListener? = null,
-    val filter: MetadataFilter? = null,
-) : LlmReference
-```
-
 The key is **capability-based tool exposure**. `ToolishRag` inspects what interfaces the underlying store implements and only exposes tools for operations the store actually supports:
-
-```kotlin
-private val toolInstances: List<Any> = run {
-    buildList {
-        if (searchOperations is VectorSearch) {
-            add(VectorSearchTools(searchOperations, vectorSearchFor, filter, listener))
-        }
-        if (searchOperations is TextSearch) {
-            add(TextSearchTools(searchOperations, textSearchFor, filter, listener))
-        }
-        if (searchOperations is ResultExpander) {
-            add(ResultExpanderTools(searchOperations))
-        }
-        if (searchOperations is RegexSearchOperations) {
-            add(RegexSearchTools(searchOperations, filter, listener))
-        }
-    }
-}
-```
 
 A Lucene store gets vector search, text search, regex search, and result expansion tools. A simple vector database adapter gets only vector search. The LLM sees exactly what's available—no more, no less. No runtime errors from calling unsupported operations.
 
 ### The Tools the LLM Can Use
 
-When you wrap a full-featured store in `ToolishRag`, the LLM gets access to:
+When you wrap a full-featured store in `ToolishRag`, the LLM gets access to tools including:
 
 **Vector Search** — Semantic similarity search with configurable top-K and threshold:
 ```kotlin
@@ -194,17 +171,13 @@ fun textSearch(query: String, topK: Int, threshold: ZeroToOne): String
 @LlmTool(description = "Given a chunk ID, expand to surrounding chunks")
 fun broadenChunk(chunkId: String, chunksToAdd: Int = 2): String
 ```
+This is extremely important as it mitigates the problem of
+    chunk boundary splitting relevant content. If the LLM seems the start or end of what appears to be a promising reef of content, it can continue mining.
 
 **Zoom Out** — Navigate to parent sections for broader context:
 ```kotlin
 @LlmTool(description = "Given a content element ID, expand to parent section")
 fun zoomOut(id: String): String
-```
-
-**Regex Search** — Pattern-based search when you know the structure:
-```kotlin
-@LlmTool(description = "Perform regex search across content elements")
-fun regexSearch(regex: String, topK: Int): String
 ```
 
 The LLM decides which tools to use, in what order, with what parameters. It can try a vector search, evaluate the results, decide they're not quite right, and try a text search with different terms. It can find a relevant chunk, then broaden it to see surrounding context. It can zoom out to understand where a chunk fits in the document structure.
@@ -213,6 +186,7 @@ The LLM decides which tools to use, in what order, with what parameters. It can 
 
 ### Using ToolishRag in Practice
 
+The API is simple, consistent and elegant.
 Here's a complete example from a production chatbot:
 
 ```java
@@ -271,7 +245,7 @@ interface RegexSearchOperations : SearchOperations
 interface CoreSearchOperations : VectorSearch, TextSearch
 ```
 
-A store implements what it naturally supports. `ToolishRag` adapts. This means you can:
+A store implements what it naturally supports, and  `ToolishRag` adapts. This means you can:
 
 - Use a local Lucene store for development with full search capabilities
 - Deploy to production with a managed vector database
@@ -288,20 +262,20 @@ An agent that can reason about why a query isn't returning good results and refo
 
 Traditional RAG needs reranking because initial retrieval is "dumb." You retrieve K documents and hope the relevant ones are in there. A reranker fixes the ordering. It's better than nothing. It's also a workaround for not being able to evaluate retrieval quality.
 
-An agent with the Corrective RAG pattern can judge whether retrieved documents actually answer the question. If quality is low, it retrieves more or reformulates. It doesn't need a separate reranker to fix what shouldn't have been broken in the first place.
+An agent with the [Corrective RAG pattern](https://arxiv.org/html/2501.09136v3) can judge whether retrieved documents actually answer the question. If quality is low, it retrieves more or reformulates. It doesn't need a separate reranker to fix what shouldn't have been broken in the first place.
 
 Embabel supports HyDE as a *hint*—guidance for the LLM to try hypothetical document generation when semantic search isn't working. But it's not required. It's not baked into a pipeline. It's one option among many that the agent can use as it reasons about the problem.
 
-This is the key insight: **techniques like HyDE and reranking exist to patch fundamental limitations of pipeline architectures. An agent that reasons about retrieval quality, reformulates queries, and iterates until it has good context doesn't need these static preprocessing steps—it does the equivalent dynamically and more intelligently.**
+**Techniques like HyDE and reranking exist to patch fundamental limitations of pipeline architectures. An agent that reasons about retrieval quality, reformulates queries, and iterates until it has good context doesn't need static preprocessing steps—it does the equivalent dynamically and more intelligently.**
 
 ## The Research Is Clear
 
 I'm not making theoretical arguments. The evidence is substantial:
 
-- **Anthropic** found multi-agent research systems outperformed single-agent by 90.2%, explicitly contrasting their dynamic approach with static RAG retrieval
-- **NVIDIA** published that agentic RAG enables systems to "adapt strategies on the fly based on new, real-time data" versus traditional RAG's "lack of reasoning" and "context blindness"
-- **Academic surveys** (arXiv 2501.09136) document that agentic RAG "transcends traditional RAG limitations" through "reflection, planning, tool use, and multiagent collaboration"
-- **Comparative studies** (TechRxiv, SSRN) show 80% improvement in adaptability and 90% of users preferring agentic systems
+- [**Anthropic**](https://www.anthropic.com/engineering/multi-agent-research-system) found multi-agent research systems outperformed single-agent by 90.2%, explicitly contrasting their dynamic approach with static RAG retrieval
+- [**NVIDIA**](https://developer.nvidia.com/blog/traditional-rag-vs-agentic-rag-why-ai-agents-need-dynamic-knowledge-to-get-smarter/) published that agentic RAG enables systems to "adapt strategies on the fly based on new, real-time data" versus traditional RAG's "lack of reasoning" and "context blindness"
+- [**Academic surveys**](https://arxiv.org/abs/2501.09136) (arXiv 2501.09136) document that agentic RAG "transcends traditional RAG limitations" through "reflection, planning, tool use, and multiagent collaboration"
+- **Comparative studies** ([TechRxiv](https://www.techrxiv.org/users/876974/articles/1325941-traditional-rag-vs-agentic-rag-a-comparative-study-of-retrieval-augmented-systems), [SSRN](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5188363)) show 80% improvement in adaptability and 90% of users preferring agentic systems
 
 Pipeline RAG is not state of the art. It's a first-generation approach being superseded by architectures that treat the LLM as a reasoning engine rather than a text generator bolted onto a search pipeline.
 
@@ -319,7 +293,7 @@ I'll write more about this soon.
 
 RAG is essential. Pipeline RAG is inadequate.
 
-The dominant frameworks—LangChain, LangChain4j—were built on a pipeline model that treats retrieval as a fixed preprocessing step. This worked for simple demos. It fails for production systems with complex queries, conversational context, and diverse document collections.
+Frameworks such as LangChain were built on a pipeline model that treats retrieval as a fixed preprocessing step. This worked for simple demos. It fails for production systems with complex queries, conversational context, and diverse document collections.
 
 Embabel takes a fundamentally different approach. `ToolishRag` exposes fine-grained search operations as tools the LLM controls. The `LlmReference` abstraction integrates RAG into the core agent framework rather than bolting it on as an afterthought. The result is retrieval that adapts, iterates, and reasons—not retrieval that executes a predetermined flow and hopes for the best.
 
@@ -328,7 +302,3 @@ If you're building production RAG systems, you have a choice. You can keep addin
 The research is clear. The results are dramatic. Pipeline RAG is the past. Agentic RAG is the future.
 
 Embabel is how you build it.
-
----
-
-*Rod Johnson is the creator of the Spring Framework and founder of Embabel. He has spent two decades building frameworks that simplify complex problems by rethinking fundamental assumptions.*
