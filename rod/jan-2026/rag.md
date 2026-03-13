@@ -1,6 +1,6 @@
 # Rethinking RAG: Pipelines Are the Past, Agentic Is the Future
 
-[RAG](https://en.wikipedia.org/wiki/Retrieval-augmented_generation) is essential. It's also hard to get right. Production RAG systems often disappoint, and the response is typically to pile on workarounds: [HyDE](https://docs.haystack.deepset.ai/docs/hypothetical-document-embeddings-hyde), reranking, query expansion, chunk overlap tuning. Complexity grows, while results don't necessarily improve.
+[RAG](https://en.wikipedia.org/wiki/Retrieval-augmented_generation) is essential. It's also hard to get right. Production RAG systems often disappoint, and the response is typically to add more and more workarounds: [HyDE](https://docs.haystack.deepset.ai/docs/hypothetical-document-embeddings-hyde), reranking, query expansion, chunk overlap tuning. Complexity grows, while results don't necessarily improve.
 
 The problem isn't the workarounds. It's what they're working around.
 
@@ -40,7 +40,7 @@ rag_chain = (
 
 This pattern appears across tutorials, documentation, and production systems. A retriever runs in response to a query and the results are added to the prompt before the LLM generates an answer. Welcome to 2023.
 
-### LangChain4j: Difference Language, Same Old Model
+### LangChain4j: Different Language, Same Old Model
 
 As you would expect from its name, [LangChain4j](https://docs.langchain4j.dev/tutorials/rag/) brings the same model to the JVM.
 The tutorial explicitly defines RAG in this limited, obsolete way:
@@ -77,7 +77,7 @@ Spring AI uses a [similar](https://docs.spring.io/spring-ai/reference/api/retrie
 
 ### What's Wrong With Pipelines?
 
-You can build more elaborate pipelines with these old school RAG frameworks, but can't  fix the core problem with the approach.
+You can build more elaborate pipelines with these old school RAG frameworks, but can't fix the core problem with the approach.
 The pipeline model has fundamental problems that no amount of tuning can fix:
 
 **1. Static Retrieval**
@@ -121,7 +121,7 @@ Embabel was built from the ground up for agentic AI. Our new RAG support sits cl
 
 `ToolishRag` inspects what interfaces the underlying store implements and only exposes tools for operations the store actually supports.
 
-For example, A Lucene store gets vector search, text search, regex search, and result expansion tools. A Neo database gets vector and full text and tools to navigate source document structure from chunks. A simple vector database adapter gets only vector search. The LLM will always be equipped to with the best possible toolkit for the store in use, without the developer needing to write any extra code.
+For example, a Lucene store gets vector search, text search, regex search, and result expansion tools. A Neo4j database gets vector and full text search plus tools to navigate source document structure from chunks. A simple vector database adapter gets only vector search. The LLM will always be equipped with the best possible toolkit for the store in use, without the developer needing to write any extra code.
 
 The basic tools are vector and text search, but chunk navigation tools are also extremely important.
 
@@ -144,8 +144,7 @@ fun textSearch(query: String, topK: Int, threshold: ZeroToOne): String
 @LlmTool(description = "Given a chunk ID, expand to surrounding chunks")
 fun broadenChunk(chunkId: String, chunksToAdd: Int = 2): String
 ```
-This is extremely important as it mitigates the problem of
-    chunk boundary splitting relevant content. If the LLM seems the start or end of what appears to be a promising reef of content, it can continue mining.
+This is extremely important as it mitigates the problem of chunk boundaries splitting relevant content. If the LLM sees the start or end of what appears to be a promising seam of content, it can continue mining.
 
 Similarly, for document-structured stores such as Neo4j:
 
@@ -204,45 +203,11 @@ public class ChatActions {
 
 The LLM has full control. It can search multiple times with different queries. It can evaluate whether results are relevant. It can expand context when needed. It can give up gracefully if nothing works—the default goal explicitly says *"Continue search until the question is answered, or you have to give up. Be creative, try different types of queries."* You can customize this part of the prompt.
 
-### Store Agnostic by Design
-
-`ToolishRag` works over any `SearchOperations` implementation. The interface hierarchy uses composition to express capabilities:
-
-```kotlin
-interface SearchOperations  // Tag interface
-interface VectorSearch : TypeRetrievalOperations
-interface TextSearch : TypeRetrievalOperations
-interface ResultExpander : SearchOperations
-interface RegexSearchOperations : SearchOperations
-interface CoreSearchOperations : VectorSearch, TextSearch
-```
-
-A store implements what it naturally supports, and  `ToolishRag` adapts. This means you can:
-
-- Use a local Lucene store for development with full search capabilities
-- Deploy to production with a managed vector database
-- Integrate with Neo4j for graph-enhanced retrieval
-- Mix stores for different content types
-
-The LLM sees appropriate tools for whatever store you provide. The abstraction handles the adaptation.
-
-## Why HyDE and Reranking Are Workarounds
-
-Traditional RAG needs HyDE because the query and document vocabularies don't match. HyDE generates a hypothetical answer document, embeds that, and searches for similar real documents. It's clever. It's also a workaround for not being able to iterate on queries.
-
-An agent that can reason about why a query isn't returning good results and reformulate it dynamically addresses the root cause. The agent doesn't need to guess what a good document might look like—it can try different queries and evaluate results.
-
-Traditional RAG needs reranking because initial retrieval is "dumb." You retrieve K documents and hope the relevant ones are in there. A reranker fixes the ordering. It's better than nothing. It's also a workaround for not being able to evaluate retrieval quality.
-
-An agent with the [Corrective RAG pattern](https://arxiv.org/html/2501.09136v3) can judge whether retrieved documents actually answer the question. If quality is low, it retrieves more or reformulates. It doesn't need a separate reranker to fix what shouldn't have been broken in the first place.
-
-Embabel supports HyDE as a *hint*—guidance for the LLM to try hypothetical document generation when semantic search isn't working. But it's not required. It's not baked into a pipeline. It's one option among many that the agent can use as it reasons about the problem.
-
-**Techniques like HyDE and reranking exist to patch fundamental limitations of pipeline architectures. An agent that reasons about retrieval quality, reformulates queries, and iterates until it has good context doesn't need static preprocessing steps—it does the equivalent dynamically and more intelligently.**
+This example comes from our [Ragbot](https://github.com/embabel/ragbot) sample application. Our [guide](https://github.com/embabel/guide) chatbot and MCP server helping users build Embabel applications also use `ToolishRag` for RAG, backed by the Embabel documentation and related content.
 
 ## What's Next: Entities in RAG
 
-Chunks are necessary but not sufficient. Real documents have structure: sections, headings, entities, relationships. A chunk that mentions "the CEO" loses meaning without knowing who "the CEO" refers to.
+Chunks are necessary but not always sufficient. Real documents have structure: sections, headings, entities, relationships. A chunk that mentions "the CEO" loses meaning without knowing who "the CEO" refers to.
 
 We're extending Embabel's RAG to include entity extraction and graph integration. Entities provide structure above chunks. When the agent retrieves a chunk mentioning "the acquisition," it can traverse to the entity representing that acquisition, find the companies involved, the date, the value—context that pure chunk retrieval would miss.
 
@@ -254,12 +219,12 @@ I'll write more about this soon.
 
 RAG is essential. Pipeline RAG is inadequate.
 
-Frameworks such as LangChain were built on a pipeline model that treats retrieval as a fixed preprocessing step. This worked for simple demos. It fails for production systems with complex queries, conversational context, and diverse document collections.
+Frameworks such as LangChain were built on a pipeline model that treats retrieval as a fixed preprocessing step.
 
-Embabel takes a fundamentally different approach. `ToolishRag` exposes fine-grained search operations as tools the LLM controls. The `LlmReference` abstraction integrates RAG into the core agent framework rather than bolting it on as an afterthought. The result is retrieval that adapts, iterates, and reasons—not retrieval that executes a predetermined flow and hopes for the best.
+As a newer framework, Embabel takes a fundamentally different approach that reflects recent research and experience. `ToolishRag` exposes fine-grained search operations as tools the LLM controls. The `LlmReference` abstraction integrates RAG into the core agent framework rather than bolting it on as an afterthought. The result is retrieval that adapts, iterates, and reasons—not retrieval that executes a predetermined flow and hopes for the best.
 
 If you're building production RAG systems, you have a choice. You can keep adding workarounds to a fundamentally limited architecture. Or you can adopt an approach that addresses the root cause: letting intelligent agents reason about retrieval rather than executing blind pipelines.
 
 The research is clear. The results are dramatic. Pipeline RAG is the past. Agentic RAG is the future.
 
-Embabel is how you build it.
+Embabel is how you build it, on the JVM.
